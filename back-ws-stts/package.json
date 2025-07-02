@@ -1,0 +1,19 @@
+{
+  "name": "back-ws-stts",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@logtape/logtape": "^1.0.0",
+    "audio-decode": "^2.2.3",
+    "openai": "^5.8.2",
+    "ws": "^8.18.3"
+  }
+}
