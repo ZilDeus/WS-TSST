@@ -19,6 +19,7 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref } from 'vue'
 import { MicVAD } from "@ricky0123/vad-web"
+import { PCMAudioStreamPlayer, WavAudioStreamPlayer } from './lib/audioStreamPlayer'
 
 let socket: WebSocket
 const state = ref<'CONNECTED' | 'DISCONNECTED' | 'ERROR'>('DISCONNECTED')
@@ -28,7 +29,8 @@ const transcriptions = ref<Array<{ timestamp: string, text: string }>>([])
 let audioContext: AudioContext
 let mediaStream: MediaStream
 let workletNode: AudioWorkletNode
-let audioChunks: any[] = []
+let playbackSource: AudioBufferSourceNode
+const audioPlayer = new PCMAudioStreamPlayer();
 
 const connectWebSocket = async () => {
   return new Promise((resolve, reject) => {
@@ -41,10 +43,10 @@ const connectWebSocket = async () => {
       resolve(true)
     })
 
-    socket.addEventListener('message', (event) => {
+    socket.addEventListener('message', async (event) => {
       try {
         if (event.data?.constructor?.name == "ArrayBuffer") {
-          audioChunks.push(new Uint8Array(event.data))
+          audioPlayer.addPCMChunk(new Uint8Array(event.data))
           return;
         }
         const data = JSON.parse(event.data)
@@ -56,16 +58,8 @@ const connectWebSocket = async () => {
             })
             console.log('Received transcription:', data.transcript)
             break;
-          case 'audio':
-            console.log("audio")
-            audioChunks.push(new Uint8Array(event.data))
-            break;
           case 'done':
-            const blob = new Blob(audioChunks, { type: 'audio/wav' })
-            const url = URL.createObjectURL(blob)
-            const audio = new Audio(url)
-            console.log(blob.size, blob.type, url)
-            audio.play()
+            //audioPlayer.finalizeAudio()
             break;
         }
       } catch (error) {
@@ -86,12 +80,12 @@ const connectWebSocket = async () => {
   })
 }
 
-const playReceivedAudio = (audioChunks: any) => {
-}
 const setupAudioContext = async () => {
   audioContext = new window.AudioContext({ sampleRate: 24000 })
 
-  // Add the worklet module
+  playbackSource = audioContext.createBufferSource()
+  playbackSource.connect(audioContext.destination)
+
   await audioContext.audioWorklet.addModule('/mic-processor.js')
 }
 
@@ -133,30 +127,34 @@ const startMicCapture = async () => {
 const stopMicCapture = () => {
   if (workletNode) {
     workletNode.disconnect()
-    workletNode = null
   }
 
   if (mediaStream) {
     mediaStream.getTracks().forEach(track => track.stop())
-    mediaStream = null
   }
 
   isRecording.value = false
   console.log('Stopped recording')
 }
 
-const toggleRecording = async () => {
-  if (isRecording.value) {
-    stopMicCapture()
-  } else {
-    try {
-      await startMicCapture()
-    } catch (error) {
-      console.error('Failed to start recording:', error)
-      alert('Failed to start recording. Please check microphone permissions.')
-    }
+const playAudio = async (buffer: Uint8Array) => {
+  const audioBuffer = audioContext.createBuffer(
+    1, // mono
+    buffer.length,
+    24000 // OpenAI expects 24kHz
+  )
+
+  const channelData = audioBuffer.getChannelData(0)
+  for (let i = 0; i < buffer.length; i++) {
+    channelData[i] = buffer[i] / 32768 // Convert Int16 → Float32 [-1, 1]
   }
+
+  const source = audioContext.createBufferSource()
+  source.buffer = audioBuffer
+  source.connect(audioContext.destination)
+  source.start()
 }
+
 const initSpeachDetection = async () => {
   const myvad = await MicVAD.new({
     onSpeechStart: () => startMicCapture()

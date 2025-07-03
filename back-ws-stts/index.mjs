@@ -20,23 +20,34 @@ const streamTTS = async (transcript) => {
   const response = await openai.audio.speech.create({
     model: "gpt-4o-mini-tts",
     voice: "coral",
-    input: `FIXED MESSAGE ! 2 3 4 4 4 5`,
+    input: `Solutions provided:
+Accumulate and process chunks - Collect chunks until you have enough data to decode properly
+Sequential playback - Queue audio buffers to play one after another instead of simultaneously
+Proper completion handling - Send a JSON message when done streaming
+Better backend chunking - Send larger, more complete chunks for better decoding success
+
+Recommendations:
+
+Use the AudioStreamPlayer class for WAV streaming
+Consider switching to raw PCM format if you need true real-time streaming
+Test with different chunk sizes to find the optimal balance between latency and audio quality
+Add error handling for audio context issues (user gesture requirements, etc.)
+
+The PCM approach would be more suitable for truly real-time streaming, while the WAV approach works better for slightly delayed but higher quality playback.`,
     instructions: "Speak in a cheerful and positive tone.",
-    response_format: "wav",
+    response_format: "pcm",
   });
+
   const reader = response.body.getReader()
-  let audioChunks = []
 
   while (true) {
     const { done, value } = await reader.read()
-    if (done) break
-    audioChunks.push(value)
-
-    logger.info("Sending Audio Chunks");
-
+    if (done) break;
     clientSocket.send(Buffer.from(value))
   }
-  logger.info("Sending Done Signal");
+
+  logger.info("✅ Done Collecting Audio ,Sending Done Signal");
+
   clientSocket.send(JSON.stringify({
     type: 'done',
   }));
@@ -61,19 +72,11 @@ openAiSocket.on("open", () => {
     type: "session.update",
     session: {
       modalities: ["text", "audio"],
-      instructions: "You are a transcription assistant. Please transcribe the audio you receive.",
-      voice: "alloy",
+      instructions: "You are a transcription assistant.Please transcribe the audio you receive.",
       input_audio_format: "pcm16",
-      output_audio_format: "pcm16",
       input_audio_transcription: {
         model: "whisper-1"
       },
-      turn_detection: {
-        type: "server_vad",
-        threshold: 0.5,
-        prefix_padding_ms: 300,
-        silence_duration_ms: 500
-      }
     }
   };
 
