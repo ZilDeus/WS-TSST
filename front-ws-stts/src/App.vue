@@ -31,6 +31,8 @@ let mediaStream: MediaStream
 let workletNode: AudioWorkletNode
 let playbackSource: AudioBufferSourceNode
 const audioPlayer = new PCMPlayer();
+//hight pitched and speed up
+//const audioPlayer = new PCMPlayer(48000);
 
 const connectWebSocket = async () => {
   return new Promise((resolve, reject) => {

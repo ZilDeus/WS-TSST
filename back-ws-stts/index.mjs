@@ -21,30 +21,34 @@ const streamTTS = async (transcript) => {
     model: "gpt-4o-mini-tts",
     voice: "coral",
     input: `Solutions provided:
-Accumulate and process chunks - Collect chunks until you have enough data to decode properly
-Sequential playback - Queue audio buffers to play one after another instead of simultaneously
-Proper completion handling - Send a JSON message when done streaming
-Better backend chunking - Send larger, more complete chunks for better decoding success
-
-Recommendations:
-
-Use the AudioStreamPlayer class for WAV streaming
-Consider switching to raw PCM format if you need true real-time streaming
-Test with different chunk sizes to find the optimal balance between latency and audio quality
-Add error handling for audio context issues (user gesture requirements, etc.)
-
 The PCM approach would be more suitable for truly real-time streaming, while the WAV approach works better for slightly delayed but higher quality playback.`,
     instructions: "Speak in a cheerful and positive tone.",
     response_format: "pcm",
   });
 
   const reader = response.body.getReader()
+  const chunkSize = 8192;
+  let bufferAccumulator = Buffer.alloc(0);
+
   while (true) {
-    const { done, value } = await reader.read()
+    const { done, value } = await reader.read();
     if (done) break;
 
-    logger.info("📩 Sending Audio Chunk");
-    clientSocket.send(Buffer.from(value));
+    bufferAccumulator = Buffer.concat([bufferAccumulator, Buffer.from(value)]);
+
+    if (bufferAccumulator.length >= chunkSize) {
+      const chunkToSend = bufferAccumulator.subarray(0, chunkSize);
+      logger.info("📩 Sending Audio Chunk");
+      clientSocket.send(chunkToSend);
+      bufferAccumulator = bufferAccumulator.subarray(chunkSize);
+    }
+  }
+
+  const remainingLength = bufferAccumulator.length - (bufferAccumulator.length % 2);
+  if (remainingLength > 0) {
+    const remainingChunk = bufferAccumulator.subarray(0, remainingLength);
+    logger.info("📩 Sending final Audio Chunk");
+    clientSocket.send(remainingChunk);
   }
 
   logger.info("✅ Done Collecting Audio ,Sending Done Signal");
