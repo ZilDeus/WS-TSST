@@ -6,7 +6,7 @@ import { getLogger, configure, getConsoleSink } from "@logtape/logtape";
 
 await configure({
   sinks: { console: getConsoleSink() },
-  loggers: [{ category: ['openai-socket'], lowestLevel: "info", sinks: ["console"] }]
+  loggers: [{ category: ['openai-socket'], lowestLevel: "debug", sinks: ["console"] }]
 });
 
 const logger = getLogger(['openai-socket']);
@@ -16,17 +16,49 @@ const streamTTS = async (transcript) => {
     type: 'transcription',
     transcript: transcript,
   }));
-  logger.trace("Transcribing audio from transcript: {transcript}", { transcript });
-  const response = await openai.audio.speech.create({
+  logger.info("📝 Sending transcription to client: {transcript}", { transcript });
+
+  const thread = await openai.beta.threads.create();
+  logger.debug("thread :{thread}", { thread });
+  await openai.beta.threads.messages.create(thread.id, {
+    role: "user",
+    content: transcript,
+  });
+
+  const run = await openai.beta.threads.runs.create(thread.id, {
+    assistant_id: "asst_JgazMlxecuogcQAAQtl6MhyF", // Replace with your actual assistant ID
+  });
+  logger.debug("run : {run}", { run });
+
+  let runStatus;
+  do {
+    runStatus = await openai.beta.threads.runs.retrieve(run.id, {
+      thread_id: thread.id
+    });
+    await new Promise((resolve) => setTimeout(resolve, 1000)); // wait 1 second
+  } while (runStatus.status !== "completed");
+  logger.debug("{runStatus}", { runStatus });
+  const messages = await openai.beta.threads.messages.list(thread.id);
+  logger.debug("{messages}", { messages });
+  const lastMessage = messages.data[0]; // Most recent message
+  logger.debug("{lastMessage}", { lastMessage });
+  const assistantResponse = lastMessage.content[0].text.value;
+  logger.debug("{assistantResponse}", { assistantResponse });
+
+  logger.info("📝 Received assistant response: {response}", { response: assistantResponse });
+
+  logger.debug("🔁 Converting Response { response } To Audio", { response: assistantResponse });
+
+  const ttsResponse = await openai.audio.speech.create({
     model: "gpt-4o-mini-tts",
     voice: "coral",
-    input: `Solutions provided:
-The PCM approach would be more suitable for truly real-time streaming, while the WAV approach works better for slightly delayed but higher quality playback.`,
+    input: assistantResponse,
     instructions: "Speak in a cheerful and positive tone.",
     response_format: "pcm",
   });
 
-  const reader = response.body.getReader()
+  logger.info("📩 Received Audio Stream From OpenAI");
+  const reader = ttsResponse.body.getReader()
   const chunkSize = 8192;
   let bufferAccumulator = Buffer.alloc(0);
 
