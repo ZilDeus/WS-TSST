@@ -39,15 +39,15 @@ The PCM approach would be more suitable for truly real-time streaming, while the
   });
 
   const reader = response.body.getReader()
-
   while (true) {
     const { done, value } = await reader.read()
     if (done) break;
-    clientSocket.send(Buffer.from(value))
+
+    logger.info("📩 Sending Audio Chunk");
+    clientSocket.send(Buffer.from(value));
   }
 
   logger.info("✅ Done Collecting Audio ,Sending Done Signal");
-
   clientSocket.send(JSON.stringify({
     type: 'done',
   }));

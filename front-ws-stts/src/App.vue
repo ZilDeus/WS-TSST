@@ -19,7 +19,7 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref } from 'vue'
 import { MicVAD } from "@ricky0123/vad-web"
-import { PCMAudioStreamPlayer, WavAudioStreamPlayer } from './lib/audioStreamPlayer'
+import { PCMPlayer } from './lib/audioStreamPlayer'
 
 let socket: WebSocket
 const state = ref<'CONNECTED' | 'DISCONNECTED' | 'ERROR'>('DISCONNECTED')
@@ -30,7 +30,7 @@ let audioContext: AudioContext
 let mediaStream: MediaStream
 let workletNode: AudioWorkletNode
 let playbackSource: AudioBufferSourceNode
-const audioPlayer = new PCMAudioStreamPlayer();
+const audioPlayer = new PCMPlayer();
 
 const connectWebSocket = async () => {
   return new Promise((resolve, reject) => {
@@ -46,7 +46,7 @@ const connectWebSocket = async () => {
     socket.addEventListener('message', async (event) => {
       try {
         if (event.data?.constructor?.name == "ArrayBuffer") {
-          audioPlayer.addPCMChunk(new Uint8Array(event.data))
+          audioPlayer.addPCMChunk(new Int16Array(event.data))
           return;
         }
         const data = JSON.parse(event.data)
@@ -59,7 +59,6 @@ const connectWebSocket = async () => {
             console.log('Received transcription:', data.transcript)
             break;
           case 'done':
-            //audioPlayer.finalizeAudio()
             break;
         }
       } catch (error) {
@@ -137,23 +136,7 @@ const stopMicCapture = () => {
   console.log('Stopped recording')
 }
 
-const playAudio = async (buffer: Uint8Array) => {
-  const audioBuffer = audioContext.createBuffer(
-    1, // mono
-    buffer.length,
-    24000 // OpenAI expects 24kHz
-  )
 
-  const channelData = audioBuffer.getChannelData(0)
-  for (let i = 0; i < buffer.length; i++) {
-    channelData[i] = buffer[i] / 32768 // Convert Int16 → Float32 [-1, 1]
-  }
-
-  const source = audioContext.createBufferSource()
-  source.buffer = audioBuffer
-  source.connect(audioContext.destination)
-  source.start()
-}
 
 const initSpeachDetection = async () => {
   const myvad = await MicVAD.new({
